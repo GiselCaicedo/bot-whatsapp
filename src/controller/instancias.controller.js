@@ -3,6 +3,7 @@ import { getConnection, sql, querys } from '../models/index.js';
 import { getSessionDir } from '../models/sesiones.js';
 import { enviarAlerta } from './alertas.controller.js';
 import { INTERVALO_MS, PAUSA_ENTRE_MENSAJES_MS, HEADLESS, CHROME_PATH } from '../../config.js';
+import { getIO } from '../socket.js';
 
 const { Client, LocalAuth } = pkg;
 
@@ -27,9 +28,26 @@ async function crearInstancia(instanciaId) {
     ultimaEjecucion: null
   };
 
-  client.on('qr', () => { state.estado = 'QR_PENDIENTE'; });
-  client.on('ready', () => { state.estado = 'READY'; });
-  client.on('disconnected', () => { state.estado = 'DESCONECTADO'; });
+  const io = getIO();
+  io.emit('message', { id: instanciaId, type: 'init', message: 'Iniciando instancia' });
+
+  client.on('qr', (qr) => {
+    state.estado = 'QR_PENDIENTE';
+    io.emit('message', { id: instanciaId, type: 'qr', message: 'Escanea el código QR' });
+    io.emit('qr', { id: instanciaId, qr });
+  });
+  client.on('ready', () => {
+    state.estado = 'READY';
+    io.emit('message', { id: instanciaId, type: 'ready', message: 'Cliente listo' });
+    const phone = client.info?.wid?.user;
+    io.emit('registrationStatus', { id: instanciaId, phoneNumber: phone, isRegistered: true });
+  });
+  client.on('disconnected', () => {
+    state.estado = 'DESCONECTADO';
+    io.emit('message', { id: instanciaId, type: 'disconnected', message: 'Cliente desconectado' });
+    const phone = client.info?.wid?.user;
+    io.emit('registrationStatus', { id: instanciaId, phoneNumber: phone, isRegistered: false });
+  });
 
   await client.initialize();
   state.timer = setInterval(() => procesarPendientes(instanciaId), INTERVALO_MS);
