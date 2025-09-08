@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bot WhatsApp</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const socket = io();
+            const instances = {};
+
+            function getCard(id) {
+                if (instances[id]) return instances[id];
+                const container = document.getElementById('instances');
+                const card = document.createElement('div');
+                card.className = 'bg-white p-6 rounded-lg shadow mb-4 text-center';
+                const title = document.createElement('h2');
+                title.className = 'text-xl font-semibold mb-4';
+                title.textContent = 'Instancia ' + id;
+                const message = document.createElement('p');
+                const qrDiv = document.createElement('div');
+                qrDiv.className = 'my-4 flex justify-center';
+                const status = document.createElement('p');
+                card.appendChild(title);
+                card.appendChild(message);
+                card.appendChild(qrDiv);
+                card.appendChild(status);
+                container.appendChild(card);
+                instances[id] = { message, qrDiv, status };
+                return instances[id];
+            }
+
+            socket.on('message', ({ id, message }) => {
+                const card = getCard(id);
+                card.message.className = 'text-green-500 font-bold py-2';
+                card.message.textContent = message;
+            });
+
+            socket.on('qr', ({ id, qr }) => {
+                const card = getCard(id);
+                card.qrDiv.innerHTML = '';
+                new QRCode(card.qrDiv, { text: qr, width: 200, height: 200 });
+            });
+
+            socket.on('registrationStatus', ({ id, phoneNumber, isRegistered }) => {
+                const card = getCard(id);
+                card.status.textContent = `${phoneNumber ?? ''} : ${isRegistered ? 'Conectado' : 'Desconectado'}`;
+            });
+        });
+    </script>
+</head>
+<body class="bg-gray-100 min-h-screen p-8">
+    <h1 class="text-2xl font-bold mb-6 text-center">Bot WhatsApp</h1>
+    <div id="instances" class="grid gap-4 md:grid-cols-2 lg:grid-cols-3"></div>
+</body>
+</html>
