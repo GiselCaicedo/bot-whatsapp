@@ -1,12 +1,10 @@
-import { Router } from "express";
-import * as alerta from "../controller/alertas.controller.js"
+import { Router } from 'express';
+import { encender, apagar, health } from '../controller/instancias.controller.js';
 
-const router = Router()
+const router = Router();
 
-router.post("/send-alert", alerta.sendAlert) 
-router.get('/debug', alerta.getDebugInfo);
-
-
+router.post('/on', encender);
+router.post('/off', apagar);
+router.get('/health', health);
 
 export default router;
-
