@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WhatsApp Web QR Code</title>
+    <title>Bot WhatsApp Instancias</title>
     <script src="/socket.io/socket.io.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
@@ -11,68 +11,315 @@
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             const socket = io();
+            const instancias = new Map(); // Para trackear el estado de cada instancia
 
-            // Maneja mensajes con estructura { id, message }
-            socket.on('message', (data) => {
-                console.log(data);
-                const messageElement = document.getElementById('message');
+            // Función para crear o actualizar una instancia en el DOM
+            function crearOActualizarInstancia(instanciaId) {
+                let container = document.getElementById(`instancia-${instanciaId}`);
                 
-                // Si los datos vienen con estructura { id, message }
-                const message = data.message || data;
-                const type = data.type;
+                if (!container) {
+                    // Crear nuevo contenedor para la instancia
+                    container = document.createElement('div');
+                    container.id = `instancia-${instanciaId}`;
+                    container.className = 'bg-white p-6 rounded-lg shadow-lg mb-4';
+                    
+                    container.innerHTML = `
+                        <h2 class="text-xl font-bold mb-4 text-center">Instancia ${instanciaId}</h2>
+                        <div id="status-${instanciaId}" class="text-center mb-4">
+                            <span class="inline-block w-3 h-3 rounded-full bg-yellow-500 mr-2"></span>
+                            <span class="text-yellow-600">Iniciando...</span>
+                        </div>
+                        <div id="message-${instanciaId}" class="text-center mb-4"></div>
+                        <div id="qrcode-${instanciaId}" class="flex justify-center mb-4"></div>
+                        <div id="phone-${instanciaId}" class="text-center text-sm text-gray-600"></div>
+                    `;
+                    
+                    document.getElementById('instancias-container').appendChild(container);
+                    
+                    // Inicializar el estado de la instancia
+                    instancias.set(instanciaId, {
+                        estado: 'INICIANDO',
+                        phoneNumber: null,
+                        qrCode: null
+                    });
+                }
                 
+                return container;
+            }
+
+            // Función para actualizar el estado visual de una instancia
+            function actualizarEstadoInstancia(instanciaId, estado, mensaje = '', phoneNumber = null) {
+                const statusElement = document.getElementById(`status-${instanciaId}`);
+                const messageElement = document.getElementById(`message-${instanciaId}`);
+                const phoneElement = document.getElementById(`phone-${instanciaId}`);
+                const qrcodeElement = document.getElementById(`qrcode-${instanciaId}`);
+                
+                if (!statusElement) return;
+
+                // Actualizar estado en memoria
+                const instanciaState = instancias.get(instanciaId) || {};
+                instanciaState.estado = estado;
+                if (phoneNumber) instanciaState.phoneNumber = phoneNumber;
+                instancias.set(instanciaId, instanciaState);
+
+                // Limpiar mensaje y QR previos si el estado cambió
                 messageElement.innerHTML = '';
-                messageElement.innerText = '';
                 
-                if (type !== 'qr') {
-                    const qrCodeDiv = document.getElementById('qrcode');
-                    qrCodeDiv.innerHTML = '';
+                // Actualizar indicador visual y mensaje según el estado
+                switch (estado) {
+                    case 'INICIANDO':
+                        statusElement.innerHTML = `
+                            <span class="inline-block w-3 h-3 rounded-full bg-yellow-500 mr-2 animate-pulse"></span>
+                            <span class="text-yellow-600">Iniciando...</span>
+                        `;
+                        messageElement.innerHTML = `<p class="text-yellow-600 animate-pulse">${mensaje}</p>`;
+                        qrcodeElement.innerHTML = '';
+                        break;
+                        
+                    case 'QR_PENDIENTE':
+                        statusElement.innerHTML = `
+                            <span class="inline-block w-3 h-3 rounded-full bg-orange-500 mr-2 animate-pulse"></span>
+                            <span class="text-orange-600">Esperando conexión</span>
+                        `;
+                        messageElement.innerHTML = `<p class="text-orange-600">${mensaje}</p>`;
+                        break;
+                        
+                    case 'READY':
+                        statusElement.innerHTML = `
+                            <span class="inline-block w-3 h-3 rounded-full bg-green-500 mr-2"></span>
+                            <span class="text-green-600 font-semibold">En línea</span>
+                        `;
+                        messageElement.innerHTML = `<p class="text-green-600 font-medium">${mensaje}</p>`;
+                        qrcodeElement.innerHTML = '';
+                        if (phoneNumber) {
+                            phoneElement.innerHTML = `Número: ${phoneNumber}`;
+                        }
+                        break;
+                        
+                    case 'DESCONECTADO':
+                        statusElement.innerHTML = `
+                            <span class="inline-block w-3 h-3 rounded-full bg-red-500 mr-2"></span>
+                            <span class="text-red-600">Desconectado</span>
+                        `;
+                        messageElement.innerHTML = `<p class="text-red-600">${mensaje}</p>`;
+                        qrcodeElement.innerHTML = '';
+                        break;
+                        
+                    case 'ERROR':
+                        statusElement.innerHTML = `
+                            <span class="inline-block w-3 h-3 rounded-full bg-red-600 mr-2"></span>
+                            <span class="text-red-600">Error</span>
+                        `;
+                        messageElement.innerHTML = `<p class="text-red-600">${mensaje}</p>`;
+                        qrcodeElement.innerHTML = '';
+                        break;
+                        
+                    default:
+                        statusElement.innerHTML = `
+                            <span class="inline-block w-3 h-3 rounded-full bg-gray-500 mr-2"></span>
+                            <span class="text-gray-600">Estado desconocido</span>
+                        `;
+                        messageElement.innerHTML = `<p class="text-gray-600">${mensaje}</p>`;
+                }
+            }
+
+            // Función para mostrar QR de una instancia específica
+            function mostrarQR(instanciaId, qrData) {
+                const qrcodeElement = document.getElementById(`qrcode-${instanciaId}`);
+                if (qrcodeElement) {
+                    // Limpiar QR anterior
+                    qrcodeElement.innerHTML = '';
+                    
+                    // Crear nuevo QR
+                    new QRCode(qrcodeElement, {
+                        text: qrData,
+                        width: 200,
+                        height: 200,
+                        colorDark: "#000000",
+                        colorLight: "#ffffff",
+                        correctLevel: QRCode.CorrectLevel.M
+                    });
+                    
+                    // Actualizar estado en memoria
+                    const instanciaState = instancias.get(instanciaId) || {};
+                    instanciaState.qrCode = qrData;
+                    instancias.set(instanciaId, instanciaState);
+                }
+            }
+
+            // Event listeners para Socket.IO
+            socket.on('message', (data) => {
+                console.log('Mensaje recibido:', data);
+                
+                const { id: instanciaId, type, message } = data;
+                
+                if (!instanciaId) {
+                    console.warn('Mensaje sin ID de instancia:', data);
+                    return;
                 }
                 
-                if (type !== 'login') {
-                    const listItem = document.getElementById('registrationStatusList');
-                    listItem.innerHTML = '';
-                }
+                // Crear o obtener contenedor de instancia
+                crearOActualizarInstancia(instanciaId);
                 
-                // Efecto de carga
-                messageElement.className = 'text-green-500 font-bold py-2 animate-pulse';
-                messageElement.textContent = message;
+                // Actualizar estado según el tipo de mensaje
+                switch (type) {
+                    case 'init':
+                        actualizarEstadoInstancia(instanciaId, 'INICIANDO', message);
+                        break;
+                    case 'qr':
+                        actualizarEstadoInstancia(instanciaId, 'QR_PENDIENTE', message);
+                        break;
+                    case 'ready':
+                        actualizarEstadoInstancia(instanciaId, 'READY', message);
+                        break;
+                    case 'disconnected':
+                        actualizarEstadoInstancia(instanciaId, 'DESCONECTADO', message);
+                        break;
+                    case 'auth_failure':
+                        actualizarEstadoInstancia(instanciaId, 'ERROR', message);
+                        break;
+                    default:
+                        actualizarEstadoInstancia(instanciaId, 'INICIANDO', message);
+                }
             });
 
-            // Maneja QR con estructura { id, qr }
             socket.on('qr', (data) => {
-                const qrCodeDiv = document.getElementById('qrcode');
-                const qr = data.qr || data; // Soporte para ambos formatos
+                console.log('QR recibido:', data);
                 
-                // Eliminar el contenido anterior
-                qrCodeDiv.innerHTML = '';
-                // Crear un nuevo código QR
-                new QRCode(qrCodeDiv, {
-                    text: qr,
-                    width: 200,
-                    height: 200
-                });
+                const { id: instanciaId, qr } = data;
+                
+                if (instanciaId && qr) {
+                    crearOActualizarInstancia(instanciaId);
+                    mostrarQR(instanciaId, qr);
+                }
             });
 
-            // Maneja estado de registro con estructura { id, phoneNumber, isRegistered }
             socket.on('registrationStatus', (data) => {
-                const listItem = document.getElementById('registrationStatusList');
-                const { phoneNumber, isRegistered } = data;
+                console.log('Estado de registro:', data);
                 
-                // Remover el contenido anterior
-                listItem.innerHTML = '';
-                listItem.textContent = `${phoneNumber || 'N/A'} : ${isRegistered ? 'Conectado' : 'Desconectado'}`;
-                listItem.className = 'py-2';
+                const { id: instanciaId, phoneNumber, isRegistered } = data;
+                
+                if (instanciaId) {
+                    crearOActualizarInstancia(instanciaId);
+                    
+                    if (isRegistered) {
+                        actualizarEstadoInstancia(instanciaId, 'READY', 'Conectado exitosamente', phoneNumber);
+                    } else {
+                        actualizarEstadoInstancia(instanciaId, 'DESCONECTADO', 'Desconectado', phoneNumber);
+                    }
+                }
             });
+
+            // Función para iniciar todas las instancias
+            async function iniciarInstancias() {
+                try {
+                    const response = await fetch('/on', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        }
+                    });
+                    
+                    const result = await response.json();
+                    console.log('Respuesta del servidor:', result);
+                    
+                    // Mostrar resultado en el log
+                    const logElement = document.getElementById('log');
+                    logElement.innerHTML = `
+                        <p class="text-sm text-gray-600 mb-2">
+                            <strong>Último inicio:</strong> ${new Date().toLocaleString()}
+                        </p>
+                        <p class="text-sm">
+                            ${result.message || 'Instancias iniciadas'}
+                        </p>
+                    `;
+                    
+                } catch (error) {
+                    console.error('Error iniciando instancias:', error);
+                    document.getElementById('log').innerHTML = `
+                        <p class="text-red-600 text-sm">
+                            Error: ${error.message}
+                        </p>
+                    `;
+                }
+            }
+
+            // Función para detener todas las instancias
+            async function detenerInstancias() {
+                try {
+                    const response = await fetch('/off', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        }
+                    });
+                    
+                    const result = await response.json();
+                    console.log('Instancias detenidas:', result);
+                    
+                    // Limpiar todas las instancias del DOM
+                    document.getElementById('instancias-container').innerHTML = '';
+                    instancias.clear();
+                    
+                    document.getElementById('log').innerHTML = `
+                        <p class="text-sm text-gray-600 mb-2">
+                            <strong>Detenido:</strong> ${new Date().toLocaleString()}
+                        </p>
+                        <p class="text-sm">
+                            ${result.message || 'Todas las instancias han sido detenidas'}
+                        </p>
+                    `;
+                    
+                } catch (error) {
+                    console.error('Error deteniendo instancias:', error);
+                    document.getElementById('log').innerHTML = `
+                        <p class="text-red-600 text-sm">
+                            Error deteniendo: ${error.message}
+                        </p>
+                    `;
+                }
+            }
+
+            // Agregar event listeners a los botones
+            document.getElementById('btn-iniciar').addEventListener('click', iniciarInstancias);
+            document.getElementById('btn-detener').addEventListener('click', detenerInstancias);
+
+            // Iniciar automáticamente al cargar la página
+            console.log('Iniciando instancias automáticamente...');
+            iniciarInstancias();
         });
     </script>
 </head>
-<body class="bg-gray-100 flex items-center justify-center min-h-screen">
-    <div class="bg-white p-8 rounded-lg shadow-lg text-center">
-        <h1 class="text-2xl font-bold mb-6">Bot WhatsApp</h1>
-        <p id="message" class="mb-6"></p>
-        <div id="qrcode" class="mb-6" style="display: flex;justify-content: center;"></div>
-        <p id="registrationStatusList" class="list-none"></p>
+<body class="bg-gray-100 min-h-screen py-8">
+    <div class="container mx-auto px-4">
+        <!-- Header -->
+        <div class="bg-white rounded-lg shadow-lg p-6 mb-6">
+            <h1 class="text-3xl font-bold text-center text-gray-800 mb-4">
+                WhatsApp Bot Multi-Instancia
+            </h1>
+            
+            <!-- Controles -->
+            <div class="flex justify-center space-x-4 mb-4">
+                <button id="btn-iniciar" class="bg-green-500 hover:bg-green-600 text-white font-medium py-2 px-6 rounded-lg transition-colors">
+                    Iniciar Instancias AR
+                </button>
+                <button id="btn-detener" class="bg-red-500 hover:bg-red-600 text-white font-medium py-2 px-6 rounded-lg transition-colors">
+                    Detener Todas
+                </button>
+            </div>
+            
+            <!-- Log de estados -->
+            <div id="log" class="bg-gray-50 rounded p-4 text-center">
+                <p class="text-gray-500 text-sm">Esperando inicio de instancias...</p>
+            </div>
+        </div>
+
+        <!-- Contenedor de instancias -->
+        <div id="instancias-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <!-- Las instancias se crearán dinámicamente aquí -->
+        </div>
+
+  
     </div>
 </body>
 </html>
