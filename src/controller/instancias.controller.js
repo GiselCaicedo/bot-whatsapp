@@ -10,7 +10,7 @@ const { Client, LocalAuth } = pkg;
 const instancias = new Map();
 
 async function crearInstancia(instanciaId) {
-  console.log(`🚀 Creando instancia ${instanciaId}`);
+  console.log(`Creando instancia ${instanciaId}`);
   
   const sessionDir = getSessionDir(instanciaId);
   const client = new Client({
@@ -41,7 +41,7 @@ async function crearInstancia(instanciaId) {
   });
 
   const io = getIO();
-  console.log(`📡 Socket.IO conectado:`, !!io);
+  console.log(`Socket.IO conectado:`, !!io);
   
   // Enviar mensaje inicial con ID de instancia
   io.emit('message', { 
@@ -49,10 +49,10 @@ async function crearInstancia(instanciaId) {
     type: 'init', 
     message: `Iniciando instancia ${instanciaId}` 
   });
-  console.log(`📤 Mensaje 'init' enviado para instancia ${instanciaId}`);
+  console.log(`Mensaje 'init' enviado para instancia ${instanciaId}`);
 
   client.on('qr', (qr) => {
-    console.log(`📱 QR generado para instancia ${instanciaId}`);
+    console.log(`QR generado para instancia ${instanciaId}`);
     state.estado = 'QR_PENDIENTE';
     
     // Emitir mensaje con ID específico
@@ -68,11 +68,11 @@ async function crearInstancia(instanciaId) {
       qr: qr 
     });
     
-    console.log(`📤 QR emitido para instancia ${instanciaId}`);
+    console.log(`QR emitido para instancia ${instanciaId}`);
   });
 
   client.on('ready', () => {
-    console.log(`✅ Cliente listo para instancia ${instanciaId}`);
+    console.log(`Cliente listo para instancia ${instanciaId}`);
     state.estado = 'READY';
     
     const phone = client.info?.wid?.user;
@@ -91,7 +91,7 @@ async function crearInstancia(instanciaId) {
       isRegistered: true 
     });
     
-    console.log(`📞 Instancia ${instanciaId} conectada con número: ${phone}`);
+    console.log(`Instancia ${instanciaId} conectada con número: ${phone}`);
     
     // Resolver la promesa cuando esté listo
     if (state.readyResolve) {
@@ -104,7 +104,7 @@ async function crearInstancia(instanciaId) {
   });
 
   client.on('disconnected', (reason) => {
-    console.log(`❌ Cliente desconectado para instancia ${instanciaId}. Razón:`, reason);
+    console.log(`Cliente desconectado para instancia ${instanciaId}. Razón:`, reason);
     state.estado = 'DESCONECTADO';
     
     const phone = client.info?.wid?.user;
@@ -131,12 +131,12 @@ async function crearInstancia(instanciaId) {
     if (state.timer) {
       clearInterval(state.timer);
       state.timer = null;
-      console.log(`⏹️ Timer limpiado para instancia desconectada ${instanciaId}`);
+      console.log(`Timer limpiado para instancia desconectada ${instanciaId}`);
     }
   });
 
   client.on('auth_failure', (msg) => {
-    console.log(`🔐 Fallo de autenticación para instancia ${instanciaId}:`, msg);
+    console.log(`Fallo de autenticación para instancia ${instanciaId}:`, msg);
     
     io.emit('message', { 
       id: instanciaId, 
@@ -151,15 +151,15 @@ async function crearInstancia(instanciaId) {
 
   // Manejar errores del cliente
   client.on('change_state', (state_info) => {
-    console.log(`🔄 Cambio de estado en instancia ${instanciaId}:`, state_info);
+    console.log(`Cambio de estado en instancia ${instanciaId}:`, state_info);
   });
 
   try {
-    console.log(`🔄 Inicializando cliente para instancia ${instanciaId}`);
+    console.log(`Inicializando cliente para instancia ${instanciaId}`);
     await client.initialize();
-    console.log(`✅ Cliente inicializado para instancia ${instanciaId}`);
+    console.log(`Cliente inicializado para instancia ${instanciaId}`);
   } catch (error) {
-    console.error(`❌ Error inicializando instancia ${instanciaId}:`, error);
+    console.error(`Error inicializando instancia ${instanciaId}:`, error);
     
     io.emit('message', { 
       id: instanciaId, 
@@ -174,20 +174,20 @@ async function crearInstancia(instanciaId) {
   }
 
   instancias.set(instanciaId, state);
-  console.log(`💾 Instancia ${instanciaId} guardada en Map`);
+  console.log(`Instancia ${instanciaId} guardada en Map`);
   
   return state;
 }
 
 export async function encender(req, res) {
   try {
-    console.log(`🔥 Iniciando proceso de encendido de instancias`);
+    console.log(`Iniciando proceso de encendido de instancias`);
     
     const pool = await getConnection();
     const result = await pool.request().query(querys.getInstancias);
     const instanciasDB = result.recordset;
     
-    console.log(`📊 Instancias encontradas en DB: ${instanciasDB.length}`);
+    console.log(`Instancias encontradas en DB: ${instanciasDB.length}`);
     
     if (instanciasDB.length === 0) {
       return res.json({ 
@@ -202,10 +202,10 @@ export async function encender(req, res) {
 
     for (const row of instanciasDB) {
       const id = row.InstanciaID;
-      console.log(`🔍 Procesando instancia ${id}`);
+      console.log(`Procesando instancia ${id}`);
       
       if (!instancias.has(id)) {
-        console.log(`🆕 Creando nueva instancia ${id}`);
+        console.log(`Creando nueva instancia ${id}`);
         try {
           const state = await crearInstancia(id);
           
@@ -222,7 +222,7 @@ export async function encender(req, res) {
             promise: Promise.race([state.readyPromise, timeoutPromise])
           });
         } catch (error) {
-          console.error(`❌ Error creando instancia ${id}:`, error);
+          console.error(`Error creando instancia ${id}:`, error);
           resultadosInstancias.push({
             id,
             estado: 'ERROR',
@@ -230,7 +230,7 @@ export async function encender(req, res) {
           });
         }
       } else {
-        console.log(`♻️ Instancia ${id} ya existe`);
+        console.log(`Instancia ${id} ya existe`);
         const state = instancias.get(id);
         if (state.estado === 'READY') {
           resultadosInstancias.push({
@@ -241,7 +241,7 @@ export async function encender(req, res) {
           });
         } else {
           // Si existe pero no está ready, intentar reconectar
-          console.log(`🔄 Reinstanciando ${id} (estado actual: ${state.estado})`);
+          console.log(`Reinstanciando ${id} (estado actual: ${state.estado})`);
           try {
             // Limpiar instancia anterior
             if (state.timer) clearInterval(state.timer);
@@ -261,7 +261,7 @@ export async function encender(req, res) {
               promise: Promise.race([newState.readyPromise, timeoutPromise])
             });
           } catch (error) {
-            console.error(`❌ Error reinstanciando ${id}:`, error);
+            console.error(`Error reinstanciando ${id}:`, error);
             resultadosInstancias.push({
               id,
               estado: 'ERROR',
@@ -272,29 +272,29 @@ export async function encender(req, res) {
       }
     }
 
-    console.log(`⏳ Esperando conexión de ${promesasInstancias.length} instancias nuevas...`);
+    console.log(`Esperando conexión de ${promesasInstancias.length} instancias nuevas...`);
 
     // Esperar a que todas las instancias estén listas (sin bloquear)
     const resultadosPromesas = await Promise.allSettled(
       promesasInstancias.map(async ({ id, promise }) => {
         try {
-          console.log(`⏳ Esperando instancia ${id}...`);
+          console.log(`Esperando instancia ${id}...`);
           const resultado = await promise;
           
           // Iniciar el timer para procesar mensajes
           const state = instancias.get(id);
           if (state && !state.timer) {
             state.timer = setInterval(() => procesarPendientes(id), INTERVALO_MS);
-            console.log(`⏲️ Timer iniciado para instancia ${id}`);
+            console.log(`Timer iniciado para instancia ${id}`);
           }
           
-          console.log(`✅ Instancia ${id} lista y funcionando`);
+          console.log(`Instancia ${id} lista y funcionando`);
           return {
             ...resultado,
             mensaje: 'Conectada exitosamente'
           };
         } catch (error) {
-          console.error(`❌ Error con instancia ${id}:`, error.message);
+          console.error(`Error con instancia ${id}:`, error.message);
           return {
             id,
             estado: 'ERROR',
@@ -321,7 +321,7 @@ export async function encender(req, res) {
     const conError = resultadosInstancias.filter(r => r.estado === 'ERROR').length;
     const enProceso = instanciasDB.length - exitosas - conError;
     
-    console.log(`🎉 Proceso completado: ${exitosas} exitosas, ${conError} con error, ${enProceso} en proceso`);
+    console.log(`Proceso completado: ${exitosas} exitosas, ${conError} con error, ${enProceso} en proceso`);
 
     res.json({ 
       message: `Instancias procesadas: ${exitosas} exitosas, ${conError} con error${enProceso > 0 ? `, ${enProceso} en proceso` : ''}`,
@@ -335,36 +335,36 @@ export async function encender(req, res) {
     });
     
   } catch (err) {
-    console.error('❌ Error general en encender:', err);
+    console.error('Error general en encender:', err);
     res.status(500).json({ error: err.message });
   }
 }
 
 export async function apagar(req, res) {
-  console.log(`🔴 Apagando todas las instancias (${instancias.size} activas)`);
+  console.log(`Apagando todas las instancias (${instancias.size} activas)`);
   
   const promesasApagado = [];
   
   for (const [id, state] of instancias.entries()) {
-    console.log(`🔴 Apagando instancia ${id}`);
+    console.log(`Apagando instancia ${id}`);
     
     const promesa = (async () => {
       try {
         // Limpiar timer
         if (state.timer) {
           clearInterval(state.timer);
-          console.log(`⏹️ Timer detenido para instancia ${id}`);
+          console.log(`Timer detenido para instancia ${id}`);
         }
         
         // Destruir cliente
         if (state.client) {
           await state.client.destroy();
-          console.log(`✅ Cliente destruido para instancia ${id}`);
+          console.log(`Cliente destruido para instancia ${id}`);
         }
         
         return { id, success: true };
       } catch (error) {
-        console.log(`⚠️ Error destruyendo cliente ${id}:`, error.message);
+        console.log(`Error destruyendo cliente ${id}:`, error.message);
         return { id, success: false, error: error.message };
       }
     })();
@@ -378,7 +378,7 @@ export async function apagar(req, res) {
   const conError = resultados.length - exitosos;
   
   instancias.clear();
-  console.log(`🧹 Mapa de instancias limpiado`);
+  console.log(`Mapa de instancias limpiado`);
   
   res.json({ 
     message: `Instancias apagadas: ${exitosos} exitosas, ${conError} con error`,
@@ -408,8 +408,9 @@ export function health(req, res) {
 
 async function procesarPendientes(instanciaId) {
   const state = instancias.get(instanciaId);
+  const io = getIO();
   if (!state || state.estado !== 'READY') {
-    console.log(`⚠️ Instancia ${instanciaId} no está lista para procesar (estado: ${state?.estado || 'NO_EXISTE'})`);
+    console.log(`Instancia ${instanciaId} no está lista para procesar (estado: ${state?.estado || 'NO_EXISTE'})`);
     return;
   }
   
@@ -420,14 +421,14 @@ async function procesarPendientes(instanciaId) {
       .input('instancia', sql.VarChar, instanciaId.toString())
       .query(querys.getDeliveriesByInstancia);
       
-    console.log(`📊 Deliveries encontrados para instancia ${instanciaId}:`, deliveries.recordset.length);
+    console.log(`Deliveries encontrados para instancia ${instanciaId}:`, deliveries.recordset.length);
     
     for (const { DeliveryID } of deliveries.recordset) {
       const alertas = await pool.request()
         .input('delivery', sql.Int, DeliveryID)
         .query(querys.getAlertasDelDia);
         
-      console.log(`📧 Alertas del día para delivery ${DeliveryID}:`, alertas.recordset.length);
+      console.log(`Alertas del día para delivery ${DeliveryID}:`, alertas.recordset.length);
       
       for (const alerta of alertas.recordset) {
         // Verificar si ya fue enviada
@@ -437,41 +438,46 @@ async function procesarPendientes(instanciaId) {
           .query(querys.checkAlertaEnviada);
           
         if (ya.recordset.length) {
-          console.log(`⏭️ Alerta ${alerta.NoticiaID} ya fue enviada`);
+          console.log(`Alerta ${alerta.NoticiaID} ya fue enviada`);
           continue;
         }
         
         // Obtener nombre del grupo (usar el configurado o CliGis por defecto)
         const groupName = 'CliGis';
         if (!groupName) {
-          console.log(`⚠️ Sin grupo definido para alerta ${alerta.NoticiaID}`);
+          console.log(`Sin grupo definido para alerta ${alerta.NoticiaID}`);
           continue;
         }
         
         // Buscar o cachear el chat ID del grupo
         let chatId = state.gruposCache.get(groupName);
         if (!chatId) {
-          console.log(`🔍 Buscando grupo: ${groupName}`);
+          console.log(`Buscando grupo: ${groupName}`);
           try {
             const chats = await state.client.getChats();
             const group = chats.find(c => c.isGroup && c.name === groupName);
             
             if (!group) {
-              console.log(`❌ Grupo no encontrado: ${groupName}`);
+              console.log(`Grupo no encontrado: ${groupName}`);
               continue;
             }
             
             chatId = group.id._serialized;
             state.gruposCache.set(groupName, chatId);
-            console.log(`✅ Grupo encontrado y cacheado: ${groupName} (${chatId})`);
+            console.log(`Grupo encontrado y cacheado: ${groupName} (${chatId})`);
           } catch (error) {
-            console.error(`❌ Error buscando grupos para instancia ${instanciaId}:`, error);
+            console.error(`Error buscando grupos para instancia ${instanciaId}:`, error);
             continue;
           }
         }
         
         try {
-          console.log(`📤 Enviando alerta ${alerta.NoticiaID} al grupo ${groupName} (instancia ${instanciaId})`);
+          console.log(`Enviando alerta ${alerta.NoticiaID} al grupo ${groupName} (instancia ${instanciaId})`);
+          io.emit('message', {
+            id: instanciaId,
+            type: 'sending',
+            message: `Enviando alerta ${alerta.NoticiaID} al grupo ${groupName}`
+          });
           await enviarAlerta(state.client, alerta, chatId);
           
           // Registrar como enviada
@@ -481,14 +487,19 @@ async function procesarPendientes(instanciaId) {
             .query(querys.insertAlertaEnviada);
             
           state.enviadasHoy++;
-          console.log(`✅ Alerta enviada y registrada. Total enviadas hoy por instancia ${instanciaId}: ${state.enviadasHoy}`);
+          console.log(`Alerta enviada y registrada. Total enviadas hoy por instancia ${instanciaId}: ${state.enviadasHoy}`);
+          io.emit('message', {
+            id: instanciaId,
+            type: 'sent',
+            message: `Alerta ${alerta.NoticiaID} enviada`
+          });
           
         } catch (error) {
-          console.error(`❌ Error enviando alerta ${alerta.NoticiaID} (instancia ${instanciaId}):`, error);
+          console.error(`Error enviando alerta ${alerta.NoticiaID} (instancia ${instanciaId}):`, error);
           // Si el grupo no existe o hay error de envío, remover del cache para reintentarlo
           if (error.message.includes('Chat not found') || error.message.includes('Group not found')) {
             state.gruposCache.delete(groupName);
-            console.log(`🗑️ Cache de grupo ${groupName} limpiado para instancia ${instanciaId}`);
+            console.log(`Cache de grupo ${groupName} limpiado para instancia ${instanciaId}`);
           }
         }
         
@@ -498,14 +509,14 @@ async function procesarPendientes(instanciaId) {
     }
     
     state.ultimaEjecucion = new Date().toISOString();
-    console.log(`🔄 Procesamiento completado para instancia ${instanciaId} - ${state.enviadasHoy} enviadas hoy`);
+    console.log(`Procesamiento completado para instancia ${instanciaId} - ${state.enviadasHoy} enviadas hoy`);
     
   } catch (error) {
-    console.error(`❌ Error procesando pendientes para instancia ${instanciaId}:`, error);
+    console.error(`Error procesando pendientes para instancia ${instanciaId}:`, error);
     
     // Si hay error de conexión, marcar instancia como problemática
     if (error.message.includes('PROTOCOL_CONNECTION_LOST') || error.message.includes('CONNECTION_LOST')) {
-      console.log(`🔌 Problema de conexión detectado en instancia ${instanciaId}`);
+      console.log(`Problema de conexión detectado en instancia ${instanciaId}`);
       state.estado = 'DESCONECTADO';
     }
   }
@@ -539,7 +550,7 @@ export async function enviarMensajePrueba(req, res) {
       chatId = `${numeroLimpio}@c.us`;
     }
 
-    console.log(`📤 Enviando mensaje de prueba desde instancia ${instanciaId} a ${chatId}`);
+    console.log(`Enviando mensaje de prueba desde instancia ${instanciaId} a ${chatId}`);
 
     await state.client.sendMessage(chatId, mensaje);
 
@@ -551,7 +562,7 @@ export async function enviarMensajePrueba(req, res) {
     });
 
   } catch (error) {
-    console.error('❌ Error enviando mensaje de prueba:', error);
+    console.error('Error enviando mensaje de prueba:', error);
     res.status(500).json({ error: error.message });
   }
 }
@@ -587,7 +598,7 @@ export async function listarGrupos(req, res) {
     });
 
   } catch (error) {
-    console.error('❌ Error listando grupos:', error);
+    console.error('Error listando grupos:', error);
     res.status(500).json({ error: error.message });
   }
 }
@@ -613,7 +624,7 @@ export async function obtenerEstadoInstancia(req, res) {
     });
 
   } catch (error) {
-    console.error('❌ Error obteniendo estado de instancia:', error);
+    console.error('Error obteniendo estado de instancia:', error);
     res.status(500).json({ error: error.message });
   }
 }

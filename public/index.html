@@ -178,6 +178,12 @@
                     case 'auth_failure':
                         actualizarEstadoInstancia(instanciaId, 'ERROR', message);
                         break;
+                    case 'sending':
+                        actualizarEstadoInstancia(instanciaId, 'READY', message);
+                        break;
+                    case 'sent':
+                        actualizarEstadoInstancia(instanciaId, 'READY', message);
+                        break;
                     default:
                         actualizarEstadoInstancia(instanciaId, 'INICIANDO', message);
                 }
