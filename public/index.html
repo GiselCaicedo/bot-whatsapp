@@ -3,57 +3,76 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bot WhatsApp</title>
+    <title>WhatsApp Web QR Code</title>
     <script src="/socket.io/socket.io.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             const socket = io();
-            const instances = {};
 
-            function getCard(id) {
-                if (instances[id]) return instances[id];
-                const container = document.getElementById('instances');
-                const card = document.createElement('div');
-                card.className = 'bg-white p-6 rounded-lg shadow mb-4 text-center';
-                const title = document.createElement('h2');
-                title.className = 'text-xl font-semibold mb-4';
-                title.textContent = 'Instancia ' + id;
-                const message = document.createElement('p');
-                const qrDiv = document.createElement('div');
-                qrDiv.className = 'my-4 flex justify-center';
-                const status = document.createElement('p');
-                card.appendChild(title);
-                card.appendChild(message);
-                card.appendChild(qrDiv);
-                card.appendChild(status);
-                container.appendChild(card);
-                instances[id] = { message, qrDiv, status };
-                return instances[id];
-            }
-
-            socket.on('message', ({ id, message }) => {
-                const card = getCard(id);
-                card.message.className = 'text-green-500 font-bold py-2';
-                card.message.textContent = message;
+            // Maneja mensajes con estructura { id, message }
+            socket.on('message', (data) => {
+                console.log(data);
+                const messageElement = document.getElementById('message');
+                
+                // Si los datos vienen con estructura { id, message }
+                const message = data.message || data;
+                const type = data.type;
+                
+                messageElement.innerHTML = '';
+                messageElement.innerText = '';
+                
+                if (type !== 'qr') {
+                    const qrCodeDiv = document.getElementById('qrcode');
+                    qrCodeDiv.innerHTML = '';
+                }
+                
+                if (type !== 'login') {
+                    const listItem = document.getElementById('registrationStatusList');
+                    listItem.innerHTML = '';
+                }
+                
+                // Efecto de carga
+                messageElement.className = 'text-green-500 font-bold py-2 animate-pulse';
+                messageElement.textContent = message;
             });
 
-            socket.on('qr', ({ id, qr }) => {
-                const card = getCard(id);
-                card.qrDiv.innerHTML = '';
-                new QRCode(card.qrDiv, { text: qr, width: 200, height: 200 });
+            // Maneja QR con estructura { id, qr }
+            socket.on('qr', (data) => {
+                const qrCodeDiv = document.getElementById('qrcode');
+                const qr = data.qr || data; // Soporte para ambos formatos
+                
+                // Eliminar el contenido anterior
+                qrCodeDiv.innerHTML = '';
+                // Crear un nuevo código QR
+                new QRCode(qrCodeDiv, {
+                    text: qr,
+                    width: 200,
+                    height: 200
+                });
             });
 
-            socket.on('registrationStatus', ({ id, phoneNumber, isRegistered }) => {
-                const card = getCard(id);
-                card.status.textContent = `${phoneNumber ?? ''} : ${isRegistered ? 'Conectado' : 'Desconectado'}`;
+            // Maneja estado de registro con estructura { id, phoneNumber, isRegistered }
+            socket.on('registrationStatus', (data) => {
+                const listItem = document.getElementById('registrationStatusList');
+                const { phoneNumber, isRegistered } = data;
+                
+                // Remover el contenido anterior
+                listItem.innerHTML = '';
+                listItem.textContent = `${phoneNumber || 'N/A'} : ${isRegistered ? 'Conectado' : 'Desconectado'}`;
+                listItem.className = 'py-2';
             });
         });
     </script>
 </head>
-<body class="bg-gray-100 min-h-screen p-8">
-    <h1 class="text-2xl font-bold mb-6 text-center">Bot WhatsApp</h1>
-    <div id="instances" class="grid gap-4 md:grid-cols-2 lg:grid-cols-3"></div>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen">
+    <div class="bg-white p-8 rounded-lg shadow-lg text-center">
+        <h1 class="text-2xl font-bold mb-6">Bot WhatsApp</h1>
+        <p id="message" class="mb-6"></p>
+        <div id="qrcode" class="mb-6" style="display: flex;justify-content: center;"></div>
+        <p id="registrationStatusList" class="list-none"></p>
+    </div>
 </body>
 </html>
