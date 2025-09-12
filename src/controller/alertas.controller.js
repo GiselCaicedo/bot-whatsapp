@@ -53,24 +53,24 @@ export async function enviarAlerta(client, alerta, chatId) {
   const lineas = [];
 
   if (tipoMedio === 'Online') {
-    lineas.push('Tipo Medio: *Online*');
-    lineas.push(`Medio: *${medio}*`);
+    lineas.push('🟣 Tipo Medio: *Online*');
+    lineas.push(`💻 Medio: *${medio}*`);
   } else if (tipoMedio === 'Gráfica') {
-    lineas.push('Tipo de medio: *Gráfica*');
-    lineas.push(`Medio: *${medio}*`);
+    lineas.push('🟢 Tipo de medio: *Gráfica*');
+    lineas.push(`📰 Medio: *${medio}*`);
   } else if (tipoMedio === 'Televisión') {
-    lineas.push('Tipo de medio: *Televisión*');
-    lineas.push(`Medio: *${medio}*`);
+    lineas.push('🟡 Tipo de medio: *Televisión*');
+    lineas.push(`📺 Medio: *${medio}*`);
   } else if (tipoMedio === 'Radio') {
-    lineas.push('Tipo de medio: *Radio*');
-    lineas.push(`Medio: *${medio}*`);
+    lineas.push('🔴 Tipo de medio: *Radio*');
+    lineas.push(`📻 Medio: *${medio}*`);
   } else {
-    lineas.push('Tipo de medio: *Otro*');
-    lineas.push(`Medio: *${medio}*`);
+    lineas.push('🟣 Tipo de medio: *Otro*');
+    lineas.push(`💻 Medio: *${medio}*`);
   }
 
   if (descripcion) {
-    lineas.push(`Programa/Sección: *${descripcion}*`);
+    lineas.push(`👉 Programa/Sección: *${descripcion}*`);
   }
 
   lineas.push('');

@@ -344,27 +344,60 @@ export async function apagar(req, res) {
   console.log(`Apagando todas las instancias (${instancias.size} activas)`);
   
   const promesasApagado = [];
+  const io = getIO();
   
   for (const [id, state] of instancias.entries()) {
     console.log(`Apagando instancia ${id}`);
     
+    // Emitir mensaje de que se está deteniendo
+    io.emit('message', { 
+      id: id, 
+      type: 'disconnected', 
+      message: 'Deteniendo instancia...' 
+    });
+    
     const promesa = (async () => {
       try {
-        // Limpiar timer
+        // PRIMERO: Limpiar timer para evitar que siga procesando
         if (state.timer) {
           clearInterval(state.timer);
+          state.timer = null;
           console.log(`Timer detenido para instancia ${id}`);
         }
         
-        // Destruir cliente
+        // SEGUNDO: Cambiar estado para que procesarPendientes no haga nada
+        state.estado = 'APAGANDO';
+        
+        // TERCERO: Esperar un momento para que termine cualquier procesamiento en curso
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        // CUARTO: Destruir cliente si existe
         if (state.client) {
           await state.client.destroy();
           console.log(`Cliente destruido para instancia ${id}`);
         }
         
+        // QUINTO: Limpiar estado
+        state.estado = 'DESCONECTADO';
+        
+        // Emitir estado final
+        io.emit('registrationStatus', { 
+          id: id, 
+          phoneNumber: null, 
+          isRegistered: false 
+        });
+        
         return { id, success: true };
       } catch (error) {
         console.log(`Error destruyendo cliente ${id}:`, error.message);
+        
+        // Asegurar que el timer se detenga incluso si hay error
+        if (state.timer) {
+          clearInterval(state.timer);
+          state.timer = null;
+        }
+        state.estado = 'ERROR';
+        
         return { id, success: false, error: error.message };
       }
     })();
@@ -377,11 +410,21 @@ export async function apagar(req, res) {
   const exitosos = resultados.filter(r => r.status === 'fulfilled' && r.value.success).length;
   const conError = resultados.length - exitosos;
   
+  // Limpiar el mapa de instancias
   instancias.clear();
   console.log(`Mapa de instancias limpiado`);
   
+  // Cerrar conexión de base de datos
+  try {
+    const pool = await getConnection();
+    await pool.close();
+    console.log('Conexión de base de datos cerrada');
+  } catch (error) {
+    console.log('Error cerrando conexión de base de datos:', error.message);
+  }
+  
   res.json({ 
-    message: `Instancias apagadas: ${exitosos} exitosas, ${conError} con error`,
+    message: `Instancias apagadas: ${exitosos} exitosas, ${conError} con error. Conexión DB cerrada.`,
     detalles: resultados.map(r => r.status === 'fulfilled' ? r.value : { error: r.reason?.message })
   });
 }
@@ -409,8 +452,27 @@ export function health(req, res) {
 async function procesarPendientes(instanciaId) {
   const state = instancias.get(instanciaId);
   const io = getIO();
-  if (!state || state.estado !== 'READY') {
-    console.log(`Instancia ${instanciaId} no está lista para procesar (estado: ${state?.estado || 'NO_EXISTE'})`);
+  
+  // Verificaciones de seguridad mejoradas
+  if (!state) {
+    console.log(`Instancia ${instanciaId} no existe en el mapa`);
+    return;
+  }
+  
+  if (!state.client) {
+    console.log(`Cliente no existe para instancia ${instanciaId}`);
+    return;
+  }
+  
+  // Estados que impiden el procesamiento
+  if (!['READY'].includes(state.estado)) {
+    console.log(`Instancia ${instanciaId} no está lista para procesar (estado: ${state.estado})`);
+    return;
+  }
+  
+  // Verificar que el timer aún esté activo (no fue limpiado)
+  if (!state.timer) {
+    console.log(`Timer no activo para instancia ${instanciaId}, deteniendo procesamiento`);
     return;
   }
   
@@ -424,6 +486,12 @@ async function procesarPendientes(instanciaId) {
     console.log(`Deliveries encontrados para instancia ${instanciaId}:`, deliveries.recordset.length);
     
     for (const { DeliveryID } of deliveries.recordset) {
+      // Verificar nuevamente el estado antes de cada iteración
+      if (state.estado !== 'READY' || !state.timer) {
+        console.log(`Procesamiento interrumpido para instancia ${instanciaId}`);
+        return;
+      }
+      
       const alertas = await pool.request()
         .input('delivery', sql.Int, DeliveryID)
         .query(querys.getAlertasDelDia);
@@ -431,6 +499,12 @@ async function procesarPendientes(instanciaId) {
       console.log(`Alertas del día para delivery ${DeliveryID}:`, alertas.recordset.length);
       
       for (const alerta of alertas.recordset) {
+        // Verificación adicional antes de cada alerta
+        if (state.estado !== 'READY' || !state.timer || !state.client) {
+          console.log(`Estado cambió durante procesamiento, deteniendo instancia ${instanciaId}`);
+          return;
+        }
+        
         // Verificar si ya fue enviada
         const ya = await pool.request()
           .input('delivery', sql.Int, DeliveryID)
@@ -454,6 +528,12 @@ async function procesarPendientes(instanciaId) {
         if (!chatId) {
           console.log(`Buscando grupo: ${groupName}`);
           try {
+            // Verificar que el cliente siga válido antes de usarlo
+            if (!state.client || state.estado !== 'READY') {
+              console.log(`Cliente no válido para instancia ${instanciaId}`);
+              return;
+            }
+            
             const chats = await state.client.getChats();
             const group = chats.find(c => c.isGroup && c.name === groupName);
             
@@ -472,13 +552,26 @@ async function procesarPendientes(instanciaId) {
         }
         
         try {
+          // Verificación final antes del envío
+          if (state.estado !== 'READY' || !state.timer || !state.client) {
+            console.log(`Estado cambió justo antes del envío, cancelando para instancia ${instanciaId}`);
+            return;
+          }
+          
           console.log(`Enviando alerta ${alerta.NoticiaID} al grupo ${groupName} (instancia ${instanciaId})`);
           io.emit('message', {
             id: instanciaId,
             type: 'sending',
             message: `Enviando alerta ${alerta.NoticiaID} al grupo ${groupName}`
           });
+          
           await enviarAlerta(state.client, alerta, chatId);
+          
+          // Verificar estado después del envío
+          if (state.estado !== 'READY') {
+            console.log(`Estado cambió después del envío para instancia ${instanciaId}`);
+            return;
+          }
           
           // Registrar como enviada
           await pool.request()
@@ -491,11 +584,28 @@ async function procesarPendientes(instanciaId) {
           io.emit('message', {
             id: instanciaId,
             type: 'sent',
-            message: `Alerta ${alerta.NoticiaID} enviada`
+            message: `Alerta ${alerta.NoticiaID} enviada exitosamente`
           });
           
         } catch (error) {
           console.error(`Error enviando alerta ${alerta.NoticiaID} (instancia ${instanciaId}):`, error);
+          
+          // Si es error de sesión cerrada, marcar instancia como problemática
+          if (error.message.includes('Session closed') || error.message.includes('Protocol error')) {
+            console.log(`Sesión cerrada detectada para instancia ${instanciaId}, marcando como desconectada`);
+            state.estado = 'DESCONECTADO';
+            if (state.timer) {
+              clearInterval(state.timer);
+              state.timer = null;
+            }
+            io.emit('message', {
+              id: instanciaId,
+              type: 'disconnected',
+              message: 'Sesión cerrada inesperadamente'
+            });
+            return;
+          }
+          
           // Si el grupo no existe o hay error de envío, remover del cache para reintentarlo
           if (error.message.includes('Chat not found') || error.message.includes('Group not found')) {
             state.gruposCache.delete(groupName);
@@ -503,8 +613,10 @@ async function procesarPendientes(instanciaId) {
           }
         }
         
-        // Pausa entre mensajes
-        await new Promise(r => setTimeout(r, PAUSA_ENTRE_MENSAJES_MS));
+        // Pausa entre mensajes solo si seguimos activos
+        if (state.estado === 'READY' && state.timer) {
+          await new Promise(r => setTimeout(r, PAUSA_ENTRE_MENSAJES_MS));
+        }
       }
     }
     
@@ -514,10 +626,19 @@ async function procesarPendientes(instanciaId) {
   } catch (error) {
     console.error(`Error procesando pendientes para instancia ${instanciaId}:`, error);
     
-    // Si hay error de conexión, marcar instancia como problemática
-    if (error.message.includes('PROTOCOL_CONNECTION_LOST') || error.message.includes('CONNECTION_LOST')) {
-      console.log(`Problema de conexión detectado en instancia ${instanciaId}`);
+    // Si hay error de conexión de BD, no cambiar estado de la instancia
+    if (error.message.includes('PROTOCOL_CONNECTION_LOST') || 
+        error.message.includes('CONNECTION_LOST') || 
+        error.message.includes('Request timeout')) {
+      console.log(`Problema de conexión de BD detectado en instancia ${instanciaId}`);
+    } else if (error.message.includes('Session closed') || error.message.includes('Protocol error')) {
+      // Pero sí marcar como desconectada si es problema del cliente WhatsApp
+      console.log(`Problema de cliente WhatsApp detectado en instancia ${instanciaId}`);
       state.estado = 'DESCONECTADO';
+      if (state.timer) {
+        clearInterval(state.timer);
+        state.timer = null;
+      }
     }
   }
 }
